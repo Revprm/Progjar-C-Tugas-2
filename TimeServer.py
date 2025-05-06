@@ -1,68 +1,83 @@
-import socket
+from socket import *
 import threading
+import logging
 from datetime import datetime
 
-HOST = "0.0.0.0"
-PORT = 45000
-BUFFER_SIZE = 1024
 CRLF = "\r\n"
 
 
-class ClientHandler(threading.Thread):
-    """Thread untuk menangani koneksi satu client."""
-
-    def __init__(self, conn: socket.socket, addr: tuple[str, int]):
+class ProcessTheClient(threading.Thread):
+    def __init__(self, connection, address):
         super().__init__(daemon=True)
-        self.conn = conn
-        self.addr = addr
-        self._buffer = ""
+        self.connection = connection
+        self.address = address
+        self.buffer = ""
 
     def run(self):
-        print(f"[CONNECTED] {self.addr}")
-        try:
-            while data := self.conn.recv(BUFFER_SIZE):
-                self._buffer += data.decode("utf-8", errors="ignore")
-                while CRLF in self._buffer:
-                    line, self._buffer = self._buffer.split(CRLF, 1)
-                    self._handle_command(line.strip())
-        finally:
-            self.conn.close()
-            print(f"[DISCONNECTED] {self.addr}")
-
-    def _handle_command(self, cmd: str):
-        cmd_upper = cmd.upper()
-        match cmd_upper:
-            case "TIME":
-                now = datetime.now().strftime("%d %m %Y %H:%M:%S")
-                response = f"JAM {now}{CRLF}"
-                self.conn.sendall(response.encode("utf-8"))
-                print(f"[SENT] {self.addr} -> {response.strip()}")
-            case "QUIT":
-                print(f"[QUIT] {self.addr}")
-                self.conn.close()
-                # menghentikan thread
-                raise SystemExit
-            case _:
-                err = f"ERROR Unknown command{CRLF}"
-                self.conn.sendall(err.encode("utf-8"))
-
-
-def start_server():
-    """Inisialisasi dan loop utama server."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind((HOST, PORT))
-        srv.listen()
-        print(f"[STARTED] Time server listening on {HOST}:{PORT}")
-
+        logging.info(f"[CONNECTED] {self.address}")
         try:
             while True:
-                conn, addr = srv.accept()
-                handler = ClientHandler(conn, addr)
-                handler.start()
-        except KeyboardInterrupt:
-            print("\n[SHUTDOWN] Server is shutting down.")
+                data = self.connection.recv(32)
+                if not data:
+                    break
+                # decode dan tambahkan ke buffer
+                self.buffer += data.decode("utf-8", errors="ignore")
+                # proses setiap baris yang diakhiri CRLF
+                while CRLF in self.buffer:
+                    line, self.buffer = self.buffer.split(CRLF, 1)
+                    cmd = line.strip().upper()
+                    if cmd == "QUIT":
+                        logging.info(f"[QUIT]     {self.address}")
+                        return  # keluar thread, koneksi ditutup di finally
+                    elif cmd == "TIME":
+                        now = datetime.now().strftime("%H:%M:%S")
+                        response = f"JAM {now}{CRLF}"
+                        self.connection.sendall(response.encode("utf-8"))
+                        logging.info(f"[SENT]     {self.address} -> {response.strip()}")
+                    else:
+                        err = f"ERROR Unknown command{CRLF}"
+                        self.connection.sendall(err.encode("utf-8"))
+        finally:
+            self.connection.close()
+            logging.info(f"[DISCONNECTED] {self.address}")
+
+
+class Server(threading.Thread):
+    def __init__(self, host="0.0.0.0", port=45000):
+        super().__init__(daemon=True)
+        self.the_clients = []
+        self.my_socket = socket(AF_INET, SOCK_STREAM)
+        self.host = host
+        self.port = port
+
+    def run(self):
+        self.my_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self.my_socket.bind((self.host, self.port))
+        self.my_socket.listen(5)
+        logging.warning(f"[STARTED] Time server listening on {self.host}:{self.port}")
+        while True:
+            conn, addr = self.my_socket.accept()
+            logging.warning(f"Connection from {addr}")
+            clt = ProcessTheClient(conn, addr)
+            clt.start()
+            self.the_clients.append(clt)
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    svr = Server()
+    svr.start()
+    # biarkan main thread hidup
+    try:
+        while True:
+            threading.Event().wait(1)
+    except KeyboardInterrupt:
+        logging.warning("\n[SHUTDOWN] Server is shutting down.")
 
 
 if __name__ == "__main__":
-    start_server()
+    main()
