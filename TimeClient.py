@@ -1,53 +1,62 @@
-#!/usr/bin/env python3
-import socket
-import threading
-import time
+import socket, threading, time, argparse, logging
 
-HOST = "127.0.0.1"
-PORT = 45000
 CRLF = "\r\n"
 BUFFER_SZ = 1024
 
 
-def worker(thread_id: int, rounds: int = 10, delay: float = 0.5):
+def worker(thread_id, host, port, rounds, delay):
+    sock = socket.socket()
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((HOST, PORT))
-            print(f"[Thread-{thread_id}] Connected to {HOST}:{PORT}")
-
-            for i in range(1, rounds + 1):
-                # Kirim TIME
-                sock.sendall(("TIME" + CRLF).encode("utf-8"))
-                data = sock.recv(BUFFER_SZ)
-                if not data:
-                    print(
-                        f"[Thread-{thread_id}] Server closed connection unexpectedly."
-                    )
-                    return
-                print(f"[Thread-{thread_id}][{i:02d}] {data.decode('utf-8').strip()}")
-                time.sleep(delay)
-
-            # Kirim QUIT
-            sock.sendall(("QUIT" + CRLF).encode("utf-8"))
-            print(f"[Thread-{thread_id}] Sent QUIT, closing.")
+        sock.connect((host, port))
+        logging.info(f"[T{thread_id}] Connected")
+        for i in range(1, rounds + 1):
+            sock.sendall(f"TIME{CRLF}".encode())
+            data = sock.recv(BUFFER_SZ)
+            if not data:
+                break
+            logging.info(f"[T{thread_id}][{i}] {data.decode().strip()}")
+            time.sleep(delay)
+        sock.sendall(f"QUIT{CRLF}".encode())
+    except ConnectionRefusedError:
+        logging.error(f"[T{thread_id}] Connection refused")
     except Exception as e:
-        print(f"[Thread-{thread_id}][ERROR] {e}")
+        logging.error(f"[T{thread_id}] Error: {e}")
+    finally:
+        sock.close()
+        logging.info(f"[T{thread_id}] Closed")
 
 
-def main(num_threads: int = 5, rounds: int = 10):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=45000)
+    parser.add_argument("-n", "--threads", type=int, default=3)
+    parser.add_argument("-r", "--rounds", type=int, default=5)
+    parser.add_argument("-d", "--delay", type=float, default=0.5)
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s: %(message)s",
+        level=logging.INFO,
+        datefmt="%H:%M:%S",
+    )
+
     threads = []
-    for tid in range(1, num_threads + 1):
-        t = threading.Thread(target=worker, args=(tid, rounds), daemon=True)
+    for tid in range(1, args.threads + 1):
+        t = threading.Thread(
+            target=worker,
+            args=(tid, args.host, args.port, args.rounds, args.delay),
+            daemon=True,
+        )
         threads.append(t)
         t.start()
 
-    # Tunggu semua selesai
-    for t in threads:
-        t.join()
-
-    print("All threads finished.")
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        logging.warning("Interrupted by user")
 
 
 if __name__ == "__main__":
-    # Contoh: 5 thread, 10 request TIME per thread
-    main(num_threads=3, rounds=5)
+    main()
