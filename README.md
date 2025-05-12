@@ -4,11 +4,11 @@
 |:----------------:|:--------------:|
 | Revy Pramana     | 5025221252     |
 
-# TimeServer
+## TimeServer
 
 Server TCP multi-threaded yang merespons permintaan waktu saat ini.
 
-## Fitur
+### Fitur
 
 - Menangani banyak koneksi klien secara bersamaan (threading).
 - Perintah:
@@ -16,7 +16,7 @@ Server TCP multi-threaded yang merespons permintaan waktu saat ini.
   - `QUIT` — memutus koneksi.
 - Logging koneksi dan error.
 
-## Cara Menjalankan
+### Cara Menjalankan
 
 
 1. Jalankan server di mesin1:
@@ -39,7 +39,7 @@ Server TCP multi-threaded yang merespons permintaan waktu saat ini.
    QUIT
    ```
 
-## Logging
+### Logging
 
 Log akan muncul di terminal, misalnya:
 
@@ -48,7 +48,7 @@ Log akan muncul di terminal, misalnya:
 14:30:12 INFO: Client ('127.0.0.1', 56789) disconnected.
 ```
 
-## Catatan
+### Catatan
 
 * Perintah harus berbaris sendiri dan diakhiri Enter.
 * Selain `TIME` dan `QUIT`, server membalas `Invalid request`.
