@@ -11,35 +11,32 @@ class ProcessTheClient(threading.Thread):
         super().__init__(daemon=True)
         self.connection = connection
         self.address = address
-        self.buffer = ""
 
     def run(self):
         logging.info(f"[CONNECTED] {self.address}")
         try:
             while True:
-                data = self.connection.recv(32)
+                data = self.connection.recv(1024)
                 if not data:
                     break
-                # decode dan tambahkan ke buffer
-                self.buffer += data.decode("utf-8", errors="ignore")
+                
+                request = data.decode("utf-8").strip()
                 # proses setiap baris yang diakhiri CRLF
-                while CRLF in self.buffer:
-                    line, self.buffer = self.buffer.split(CRLF, 1)
-                    cmd = line.strip().upper()
-                    if cmd == "QUIT":
-                        logging.info(f"[QUIT]     {self.address}")
-                        return  # keluar thread, koneksi ditutup di finally
-                    elif cmd == "TIME":
-                        now = datetime.now().strftime("%H:%M:%S")
-                        response = f"JAM {now}{CRLF}"
-                        self.connection.sendall(response.encode("utf-8"))
-                        logging.info(f"[SENT]     {self.address} -> {response.strip()}")
-                    else:
-                        err = f"ERROR Unknown command{CRLF}"
-                        self.connection.sendall(err.encode("utf-8"))
+                if request == "QUIT":
+                    logging.info(f"Client {self.address} disconnected.")
+                    break
+                
+                if request.startswith("TIME"):
+                    now = datetime.now()
+                    current_time = now.strftime("%H:%M:%S")
+                    response = f"JAM {current_time}\r\n"
+                    self.connection.sendall(response.encode('utf-8'))
+                else:
+                    self.connection.sendall(b"Invalid request\r\n")
+        except Exception as e:
+            logging.error(f"Error with client {self.address}: {e}")
         finally:
             self.connection.close()
-            logging.info(f"[DISCONNECTED] {self.address}")
 
 
 class Server(threading.Thread):
